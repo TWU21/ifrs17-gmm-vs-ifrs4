@@ -1,17 +1,9 @@
 """
-IFRS 17, modelo general de medición (GMM / building block approach), para un grupo de
-contratos de seguro temporal de fallecimiento, y comparación con:
+Modelo general de IFRS 17 para un grupo de seguros temporales de fallecimiento, y comparación
+con el régimen anterior (IFRS 4 / PCEA) y con Solvencia II.
 
-- el régimen anterior (IFRS 4, que en España permitía seguir el criterio local del PCEA:
-  primas emitidas como ingreso y provisión matemática con bases técnicas prudentes), y
-- Solvencia II (mejor estimación + margen de riesgo por coste de capital).
-
-Convenciones
-------------
-- Años t = 0, ..., n-1. Primas y gastos se pagan al inicio del año; los siniestros, al final.
-- Los flujos de cumplimiento (FCF) se expresan como pasivo: valor actual de salidas menos entradas.
-- Se usa un único tipo de descuento plano (tipo actual = tipo bloqueado), de modo que no hay
-  efectos de cambios de tipos ni opción de OCI. Es una simplificación explícita.
+Primas y gastos se pagan al inicio de cada año y los siniestros al final. Los flujos de
+cumplimiento van con signo de pasivo (salidas menos entradas). Tipo de descuento plano.
 """
 from __future__ import annotations
 
@@ -21,7 +13,6 @@ import numpy as np
 import pandas as pd
 
 
-# --------------------------------------------------------------------------- hipótesis
 @dataclass
 class Contract:
     age: int = 40
@@ -48,7 +39,6 @@ class Basis:
         return min(1.0, self.qx.loc[age] * factor)
 
 
-# --------------------------------------------------------------------------- proyección
 def project(c: Contract, b: Basis, start: int = 0, inforce: float | None = None,
             level: np.ndarray | float = 1.0) -> dict:
     """Flujos esperados desde el año `start` con `inforce` pólizas en vigor.
@@ -97,7 +87,6 @@ def pv_fcf(proj: dict, rate: float) -> np.ndarray:
     return (start_flows * v_start).sum(-1) + (proj["claims"] * v_end).sum(-1)
 
 
-# --------------------------------------------------------------------------- ajuste por riesgo
 def risk_adjustment(c: Contract, b: Basis, start: int = 0, inforce: float | None = None,
                     confidence: float = 0.75, sigma: float = 0.10, n_sims: int = 20_000,
                     seed: int = 17) -> float:
@@ -112,7 +101,6 @@ def risk_adjustment(c: Contract, b: Basis, start: int = 0, inforce: float | None
     return float(max(0.0, np.quantile(pv, confidence) - pv.mean()))
 
 
-# --------------------------------------------------------------------------- reconocimiento inicial
 def initial_recognition(c: Contract, b: Basis, **ra_kwargs) -> pd.Series:
     pv = float(pv_fcf(project(c, b), b.rate))
     ra = risk_adjustment(c, b, **ra_kwargs)
@@ -126,7 +114,6 @@ def initial_recognition(c: Contract, b: Basis, **ra_kwargs) -> pd.Series:
     })
 
 
-# --------------------------------------------------------------------------- evolución GMM
 def gmm_rollforward(c: Contract, b: Basis, change: tuple[int, float] | None = None,
                     claims_shock: dict | None = None, **ra_kwargs) -> pd.DataFrame:
     """Evolución anual de un grupo rentable con el modelo general.
@@ -213,7 +200,6 @@ def gmm_rollforward(c: Contract, b: Basis, change: tuple[int, float] | None = No
     return pd.DataFrame(rows).set_index("Año")
 
 
-# --------------------------------------------------------------------------- régimen anterior
 def local_gaap(c: Contract, b: Basis, technical_rate: float = 0.02, technical_loading: float = 0.10,
                change: tuple[int, float] | None = None, claims_shock: dict | None = None) -> pd.DataFrame:
     """Régimen anterior simplificado (IFRS 4 con criterio local tipo PCEA).
@@ -276,7 +262,6 @@ def local_gaap(c: Contract, b: Basis, technical_rate: float = 0.02, technical_lo
     return pd.DataFrame(rows).set_index("Año")
 
 
-# --------------------------------------------------------------------------- Solvencia II
 def solvency_ii_inception(c: Contract, b: Basis, mortality_shock: float = 0.15,
                           coc: float = 0.06) -> pd.Series:
     """BEL y margen de riesgo (coste de capital) al inicio.
